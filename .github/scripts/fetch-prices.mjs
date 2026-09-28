@@ -58,8 +58,35 @@ await Promise.all(Array.from({ length: 6 }, async () => {
   while (queue.length) { const s = queue.shift(); quotes[s] = await quote(s); }
 }));
 
+// Kapalıçarşı prices from Truncgil Finans, used when Harem Altın blocks the request.
+async function truncgilGold() {
+  const r = await fetch('https://finans.truncgil.com/v4/today.json', { headers: { 'User-Agent': UA } });
+  if (!r.ok) throw new Error(`Truncgil ${r.status}`);
+  const d = await r.json();
+  const norm = (k) => k.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/ı/g, 'i').replace(/[^a-z0-9]/g, '');
+  const by = {}; for (const [k, v] of Object.entries(d)) by[norm(k)] = v;
+  const buying = (o) => { if (!o || typeof o !== 'object') return NaN; for (const k of Object.keys(o)) if (['buying', 'alis', 'alış'].includes(k.toLowerCase())) return num(o[k]); return NaN; };
+  const pick = (...keys) => { for (const k of keys) { const v = buying(by[k]); if (v > 0) return v; } return undefined; };
+  const gold = {
+    gram: pick('gramaltin', 'gra'), ceyrek: pick('ceyrekaltin', 'cey'), yarim: pick('yarimaltin', 'yar'),
+    tam: pick('tamaltin', 'tam'), cumhuriyet: pick('cumhuriyetaltini', 'cum'), bilezik22: pick('22ayarbilezik', 'yia'),
+  };
+  if (!gold.gram) throw new Error('no gold prices');
+  return gold;
+}
+
+// Last resort: world gold price (ounce, USD) converted to TRY per gram.
+async function worldGold() {
+  const oz = await quote('GC=F');
+  const usd = quotes['USDTRY=X'];
+  if (!oz || !usd) throw new Error('no world gold price');
+  return { gram: (oz.price * usd.price) / 31.1035 };
+}
+
 let gold = null, goldSource = null;
-try { gold = await haremGold(); goldSource = 'Harem Altın'; } catch (e) { console.log('Harem failed:', e.message); }
+for (const [name, fn] of [['Harem Altın', haremGold], ['Truncgil Finans (Kapalıçarşı)', truncgilGold], ['World gold price', worldGold]]) {
+  try { gold = await fn(); goldSource = name; break; } catch (e) { console.log(`${name} failed:`, e.message); }
+}
 
 const ok = Object.values(quotes).filter(Boolean).length;
 console.log(`quotes: ${ok}/${symbols.length}, gold: ${goldSource ?? 'none'}`);

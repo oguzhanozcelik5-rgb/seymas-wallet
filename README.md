@@ -13,15 +13,17 @@ All data stays on her phone (browser storage). Use Settings → Save backup now 
 
 ## Where prices come from
 
-| Asset | Without price server | With price server |
-|---|---|---|
-| Gold (gram, çeyrek, yarım, tam, ata, 22 ayar) | Truncgil Finans (Kapalıçarşı) | Harem Altın |
-| USD, EUR, GBP | Truncgil Finans, ECB (Frankfurter) as backup | Yahoo Finance |
-| BIST and US stocks | typed in by hand | Yahoo Finance |
+A GitHub Action in this repo (`.github/workflows/prices.yml`) runs about every 15 minutes
+and saves `prices.json` on the `prices` branch. The app reads it; nothing to set up.
+
+- **Stocks and USD/EUR/GBP**: Yahoo Finance (same exchange data investing.com shows).
+- **Gold**: Harem Altın when reachable, otherwise Kapalıçarşı prices from GenelPara or
+  Truncgil, and as a last resort the world gold price converted to lira.
+- **Stocks followed**: the tickers in `symbols.txt`. To add one of her stocks, edit that file
+  on GitHub (Borsa İstanbul tickers end in `.IS`, e.g. `THYAO.IS`). Until then she can
+  type the price herself on the Overview.
 
 Holdings are valued at the dealer's buying price (Alış), i.e. what she'd get if she sold.
-investing.com and Harem Altın don't let other websites read their prices, which is why
-the price server exists.
 
 ## Put it online (GitHub Pages)
 

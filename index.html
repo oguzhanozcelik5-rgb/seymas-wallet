@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Seyma's Wallet</title>
+  <meta name="description" content="Seyma's stocks, gold and currencies in one place, with gains in lira and dollars.">
+  <meta name="theme-color" content="#1f3a34" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#121816" media="(prefers-color-scheme: dark)">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Seyma's Wallet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <img src="icons/icon.svg" alt="" width="30" height="30">
+      <h1>Seyma's Wallet</h1>
+    </div>
+    <div class="top-actions">
+      <button id="refresh" class="icon-btn" aria-label="Refresh prices" title="Refresh prices">
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></svg>
+      </button>
+      <button id="open-settings" class="icon-btn" aria-label="Settings" title="Settings">
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm7.4-3a7.4 7.4 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7.6 7.6 0 0 0-2-1.2L14.5 3h-5l-.4 2.6a7.6 7.6 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6a7.4 7.4 0 0 0 0 2.4l-2 1.6 2 3.4 2.4-1a7.6 7.6 0 0 0 2 1.2l.4 2.6h5l.4-2.6a7.6 7.6 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2Z"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <main>
+    <!-- Overview -->
+    <section id="view-overview" class="view" hidden>
+      <div class="hero card">
+        <div class="hero-label">Total value</div>
+        <div class="hero-value" id="total-try">—</div>
+        <div class="hero-sub" id="total-usd">—</div>
+        <div class="gain-pair">
+          <div><span class="muted">Gain in lira</span><strong id="gain-try">—</strong></div>
+          <div><span class="muted">Gain in dollars</span><strong id="gain-usd">—</strong></div>
+        </div>
+        <div class="hero-foot muted" id="updated">Prices not loaded yet</div>
+      </div>
+      <div id="alloc" class="alloc"></div>
+      <div id="notice" class="notice" hidden></div>
+      <div id="holdings"></div>
+      <p class="empty muted" id="overview-empty" hidden>Nothing here yet. Add her first asset on the <a href="#add">Add</a> tab.</p>
+    </section>
+
+    <!-- Add asset -->
+    <section id="view-add" class="view" hidden>
+      <form id="asset-form" class="card form" autocomplete="off">
+        <h2 id="form-title">Add an asset</h2>
+        <input type="hidden" name="id">
+        <label>What is it?
+          <select name="type" required>
+            <option value="gold">Gold</option>
+            <option value="fx">Foreign currency (USD, EUR, GBP)</option>
+            <option value="try">Turkish lira</option>
+            <option value="bist">Borsa İstanbul stock</option>
+            <option value="us">US stock</option>
+          </select>
+        </label>
+
+        <label data-for="stock">Ticker symbol
+          <input name="symbol" placeholder="e.g. THYAO" autocapitalize="characters" spellcheck="false">
+        </label>
+        <label data-for="gold">Kind of gold
+          <select name="gold"></select>
+        </label>
+        <label data-for="fx">Currency
+          <select name="fx"></select>
+        </label>
+
+        <label><span id="qty-label">Quantity</span>
+          <input name="quantity" type="text" inputmode="decimal" required placeholder="0">
+        </label>
+
+        <label>When did she buy it?
+          <input name="buyDate" type="date" required>
+        </label>
+
+        <label data-for="price"><span id="price-label">Price paid</span>
+          <div class="input-row">
+            <input name="buyPrice" type="text" inputmode="decimal" placeholder="0">
+            <button type="button" id="fill-price" class="ghost small">Look up</button>
+          </div>
+          <small class="muted" id="price-hint"></small>
+        </label>
+
+        <label>USD/TRY on that day
+          <input name="buyUsdTry" type="text" inputmode="decimal" required placeholder="filled in automatically">
+          <small class="muted" id="rate-hint">Used to show her gain in dollars.</small>
+        </label>
+
+        <label>Note <span class="muted">(optional)</span>
+          <input name="note" placeholder="e.g. wedding gift, bank account">
+        </label>
+
+        <p class="form-error" id="form-error" hidden></p>
+        <div class="form-actions">
+          <button type="submit" class="primary" id="save-btn">Add asset</button>
+          <button type="button" class="ghost" id="cancel-edit" hidden>Cancel</button>
+        </div>
+      </form>
+
+      <h3 class="list-title">Her assets</h3>
+      <ul id="asset-list" class="asset-list"></ul>
+      <p class="empty muted" id="list-empty">No assets yet.</p>
+    </section>
+
+    <!-- Monthly -->
+    <section id="view-monthly" class="view" hidden>
+      <div class="hero card" id="month-hero">
+        <div class="hero-label" id="month-hero-label">This month</div>
+        <div class="hero-value" id="month-try">—</div>
+        <div class="hero-sub" id="month-usd">—</div>
+        <div class="hero-foot muted" id="month-foot"></div>
+      </div>
+      <ul id="month-list" class="month-list"></ul>
+      <p class="muted small-print">Monthly gains count only price changes: adding a new purchase doesn't count as earning. The app saves a daily record each time it's opened, so months start filling in from the first day it's used.</p>
+    </section>
+  </main>
+
+  <nav class="tabs" aria-label="Pages">
+    <a href="#add" data-tab="add">
+      <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M12 5v14M5 12h14"/></svg>
+      <span>Add</span>
+    </a>
+    <a href="#overview" data-tab="overview">
+      <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M3 20h18M6 16V10M11 16V6M16 16v-4M21 16V8"/></svg>
+      <span>Overview</span>
+    </a>
+    <a href="#monthly" data-tab="monthly">
+      <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M4 6h16v14H4zM4 10h16M9 3v4M15 3v4"/></svg>
+      <span>Monthly</span>
+    </a>
+  </nav>
+
+  <dialog id="settings">
+    <form method="dialog" class="form">
+      <h2>Settings</h2>
+      <label>Price server address <span class="muted">(optional)</span>
+        <input name="proxyUrl" type="url" placeholder="https://seyma-prices.yourname.workers.dev" spellcheck="false">
+        <small class="muted">Needed for live stock prices. Without it, gold and currencies still update live.</small>
+      </label>
+      <div class="settings-block">
+        <strong>Backup</strong>
+        <p class="muted">Her data is stored only on this phone. Save a backup now and then.</p>
+        <div class="form-actions">
+          <button type="button" id="export" class="ghost">Save backup</button>
+          <label class="ghost button-like">Restore backup<input type="file" id="import" accept="application/json,.json" hidden></label>
+        </div>
+      </div>
+      <p class="muted" id="sources"></p>
+      <div class="form-actions">
+        <button value="save" class="primary">Done</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

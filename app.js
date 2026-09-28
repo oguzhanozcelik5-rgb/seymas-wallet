@@ -435,6 +435,7 @@ $('#asset-list').addEventListener('click', handleEditDelete);
 async function refresh() {
   if (refreshing) return;
   refreshing = true;
+  let fixedTicker = false;
   $('#refresh').classList.add('spinning');
   renderOverview();
   try {
@@ -448,16 +449,29 @@ async function refresh() {
     persist();
     const notice = $('#notice');
     const noLive = state.assets.filter((a) => (a.type === 'us' || a.type === 'bist') && !(prices[priceKey(a)] > 0));
+    const missing = () => state.assets.filter((a) => (a.type === 'us' || a.type === 'bist') && !(state.prices[priceKey(a)]?.price > 0) && !(state.manual[priceKey(a)] > 0));
     const msgs = [];
     if (errors.length && Object.keys(prices).length <= 1) msgs.push('Couldn\'t reach the price feeds. Showing the last saved prices.');
-    for (const a of noLive) if (!suggestions[a.id]) suggestTicker(a.type, a.symbol).then((s) => { if (s) { suggestions[a.id] = s; render(); } });
-    if (noLive.length) msgs.push(`No live price for ${noLive.map((a) => a.symbol).join(', ')}. Check the ticker, or tap "Enter today's price".`);
+    // Fix obvious ticker typos by itself (NVDIA -> NVDA); otherwise suggest one.
+    for (const a of noLive) {
+      const s = suggestions[a.id] || await suggestTicker(a.type, a.symbol);
+      if (!s || s.symbol === a.symbol) continue;
+      if (s.score <= 1 && a.symbol.length >= 4) {
+        a.symbol = s.symbol;
+        delete suggestions[a.id];
+        fixedTicker = true;
+      } else suggestions[a.id] = s;
+    }
+    if (fixedTicker) { persist(); return; } // fetch again with the corrected tickers
+    const still = missing();
+    if (still.length) msgs.push(`No live price for ${still.map((a) => a.symbol).join(', ')}. Check the ticker, or tap "Enter today's price".`);
     notice.textContent = msgs.join(' ');
     notice.hidden = !msgs.length;
   } finally {
     refreshing = false;
     $('#refresh').classList.remove('spinning');
     render();
+    if (fixedTicker) refresh();
   }
 }
 
@@ -516,6 +530,14 @@ route();
 refresh();
 
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
-  navigator.serviceWorker.register('sw.js').catch(() => {});
+  // Reload once when a new version takes over, so she always runs the latest app.
+  const hadController = Boolean(navigator.serviceWorker.controller);
+  let reloaded = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (hadController && !reloaded) { reloaded = true; location.reload(); }
+  });
+  navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' })
+    .then((reg) => reg.update())
+    .catch(() => {});
 }
 if (navigator.storage?.persist) navigator.storage.persist().catch(() => {});

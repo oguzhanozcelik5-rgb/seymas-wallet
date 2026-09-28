@@ -155,7 +155,7 @@ function editDistance(a, b) {
 
 // For a ticker the feed doesn't know, the closest real one: by ticker
 // (THYA -> THYAO) or by company name (NVDIA -> NVDA, "NVIDIA Corp").
-// Returns { symbol, name } or null.
+// Returns { symbol, name, score } (score = letters off) or null.
 export async function suggestTicker(type, typed) {
   const names = await loadNames();
   if (!names) return null;
@@ -168,7 +168,7 @@ export async function suggestTicker(type, typed) {
     const word = String(name || '').toUpperCase().split(/[^A-Z0-9İŞĞÜÖÇ]+/)[0] || '';
     const score = Math.min(editDistance(t, ticker), editDistance(t, word));
     const limit = t.length <= 3 ? 1 : 2;
-    if (score <= limit && score < bestScore) { best = { symbol: ticker, name }; bestScore = score; }
+    if (score <= limit && score < bestScore) { best = { symbol: ticker, name, score }; bestScore = score; }
   }
   return best;
 }

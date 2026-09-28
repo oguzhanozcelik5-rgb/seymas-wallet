@@ -13,8 +13,9 @@ All data stays on her phone (browser storage). Use Settings → Save backup now 
 
 ## Where prices come from
 
-A GitHub Action in this repo (`.github/workflows/prices.yml`) runs about every 15 minutes
-and saves `prices.json` on the `prices` branch. The app reads it; nothing to set up.
+A GitHub Action in this repo (`.github/workflows/prices.yml`) refreshes `prices.json` on the
+`prices` branch every 5 minutes, and restarts itself every ~6 hours. The app reads it;
+nothing to set up.
 
 - **Stocks and USD/EUR/GBP**: Yahoo Finance (same exchange data investing.com shows).
 - **Gold**: Harem Altın (their live price connection), otherwise Kapalıçarşı prices from

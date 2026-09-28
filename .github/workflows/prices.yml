@@ -1,15 +1,19 @@
 name: Update prices
 
+# One run keeps prices.json fresh for almost 6 hours (a refresh every 5 minutes),
+# then starts the next run itself, so the feed never depends on GitHub's
+# scheduler. The schedule is only a backup in case the chain ever breaks.
 on:
   schedule:
-    - cron: '*/15 * * * *'
+    - cron: '*/30 * * * *'
   workflow_dispatch:
   push:
     branches: [main]
-    paths: [symbols.txt]
+    paths: [symbols.txt, .github/scripts/fetch-prices.mjs, .github/workflows/prices.yml]
 
 permissions:
   contents: write
+  actions: write
 
 concurrency:
   group: prices
@@ -18,21 +22,32 @@ concurrency:
 jobs:
   update:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 355
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: node .github/scripts/fetch-prices.mjs
-      # Publish prices.json on its own branch, replacing the previous copy,
-      # so the main branch and the website are left alone.
-      - name: Publish to the prices branch
+      - name: Refresh prices every 5 minutes
+        env:
+          PUSH_URL: https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git
         run: |
-          cd out
-          git init -q -b prices
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add prices.json
-          git commit -qm "Prices $(date -u +%FT%TZ)"
-          git push -qf "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" prices
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          end=$(( $(date +%s) + 340 * 60 ))
+          while [ "$(date +%s)" -lt "$end" ]; do
+            # Pick up edits to symbols.txt without restarting.
+            git fetch -q origin main && git checkout -q origin/main -- symbols.txt .github/scripts || true
+            if node .github/scripts/fetch-prices.mjs; then
+              # Publish prices.json on its own branch, replacing the previous copy,
+              # so the main branch and the website are left alone.
+              (cd out && rm -rf .git && git init -q -b prices && git add prices.json \
+                && git commit -qm "Prices $(date -u +%FT%TZ)" && git push -qf "$PUSH_URL" prices) || echo "publish failed"
+            fi
+            sleep 300
+          done
+      - name: Start the next run
+        if: ${{ !cancelled() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run prices.yml --ref main --repo "${{ github.repository }}"

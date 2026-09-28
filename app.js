@@ -233,25 +233,30 @@ form.type.addEventListener('change', syncFormToType);
 form.gold.addEventListener('change', syncFormToType);
 form.fx.addEventListener('change', () => { syncFormToType(); form.buyPrice.value = ''; });
 
-let rateReq = 0;
-async function fillRateForDate() {
-  const d = form.buyDate.value;
-  if (!d) return;
-  const my = ++rateReq;
-  $('#rate-hint').textContent = 'Looking up USD/TRY for that day…';
+// USD/TRY on the purchase date, looked up silently so she never has to type it.
+// If the lookup fails it stays empty: the math uses today's rate meanwhile,
+// and the next price refresh tries again.
+async function usdTryForDate(date) {
+  const live = state.prices['fx:USD']?.price;
+  if (date === today() && live > 0) return live;
   try {
-    // For today, use the same live rate the overview uses, so a fresh purchase starts at zero gain.
-    const live = state.prices['fx:USD']?.price;
-    const r = d === today() && live > 0 ? live : await usdTryOn(d, state.settings.proxyUrl);
-    if (my !== rateReq) return;
-    form.buyUsdTry.value = nf(4).format(r);
-    $('#rate-hint').textContent = `USD/TRY on ${dateText(d)}. Change it if she got a different rate.`;
-  } catch {
-    if (my !== rateReq) return;
-    $('#rate-hint').textContent = 'Couldn\'t look it up. Please type the USD/TRY rate for that day.';
-  }
+    const r = await usdTryOn(date, state.settings.proxyUrl);
+    if (r > 0) return r;
+  } catch { /* retried on next refresh */ }
+  return null;
 }
-form.buyDate.addEventListener('change', fillRateForDate);
+
+// Fill in rates for purchases saved while offline.
+async function backfillRates() {
+  let changed = false;
+  for (const a of state.assets) {
+    if (a.buyUsdTry > 0) continue;
+    if (a.type === 'fx' && a.symbol === 'USD') { a.buyUsdTry = a.buyPrice; changed = true; continue; }
+    const r = await usdTryForDate(a.buyDate);
+    if (r > 0) { a.buyUsdTry = r; changed = true; }
+  }
+  if (changed) persist();
+}
 
 $('#fill-price').addEventListener('click', async () => {
   const d = form.buyDate.value;
@@ -287,7 +292,7 @@ function formAsset() {
     quantity: parseNum(form.quantity.value),
     buyDate: form.buyDate.value,
     buyPrice: type === 'try' ? 1 : parseNum(form.buyPrice.value),
-    buyUsdTry: parseNum(form.buyUsdTry.value),
+    buyUsdTry: null,
     note: form.note.value.trim(),
   };
 }
@@ -301,10 +306,9 @@ function resetForm() {
   $('#cancel-edit').hidden = true;
   $('#form-error').hidden = true;
   syncFormToType();
-  fillRateForDate();
 }
 
-form.addEventListener('submit', (e) => {
+form.addEventListener('submit', async (e) => {
   e.preventDefault();
   const a = formAsset();
   const err = (m) => { const el = $('#form-error'); el.textContent = m; el.hidden = false; };
@@ -312,8 +316,15 @@ form.addEventListener('submit', (e) => {
   if (!(a.quantity > 0)) return err('Please enter how much she has.');
   if (!a.buyDate || a.buyDate > today()) return err('Please pick the date she bought it.');
   if (!(a.buyPrice > 0)) return err('Please enter the price she paid.');
-  if (!(a.buyUsdTry > 0)) return err('Please enter the USD/TRY rate for that day.');
   const i = state.assets.findIndex((x) => x.id === a.id);
+  const old = state.assets[i];
+  if (a.type === 'fx' && a.symbol === 'USD') a.buyUsdTry = a.buyPrice;
+  else if (old && old.buyDate === a.buyDate && old.buyUsdTry > 0) a.buyUsdTry = old.buyUsdTry;
+  else {
+    $('#save-btn').disabled = true;
+    a.buyUsdTry = await usdTryForDate(a.buyDate);
+    $('#save-btn').disabled = false;
+  }
   if (i >= 0) state.assets[i] = a; else state.assets.push(a);
   persist();
   const editing = i >= 0;
@@ -334,12 +345,10 @@ function editAsset(a) {
   form.quantity.value = fmt.num(a.quantity, 6);
   form.buyDate.value = a.buyDate;
   form.buyPrice.value = a.type === 'try' ? '' : fmt.num(a.buyPrice, 6);
-  form.buyUsdTry.value = fmt.num(a.buyUsdTry, 6);
   form.note.value = a.note || '';
   $('#form-title').textContent = 'Edit asset';
   $('#save-btn').textContent = 'Save changes';
   $('#cancel-edit').hidden = false;
-  $('#rate-hint').textContent = 'Used to show her gain in dollars.';
   syncFormToType();
   form.scrollIntoView({ behavior: 'smooth' });
 }
@@ -389,6 +398,7 @@ async function refresh() {
     const { prices, sources, errors } = await fetchAllPrices(state.assets, state.settings.proxyUrl);
     const now = new Date().toISOString();
     for (const [k, v] of Object.entries(prices)) if (v > 0) state.prices[k] = { price: v, time: now };
+    await backfillRates();
     lastSources = sources;
     if (Object.keys(prices).length > 1) lastRefresh = new Date();
     recordSnapshot(state);

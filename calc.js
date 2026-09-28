@@ -24,8 +24,10 @@ export function valueAsset(state, a) {
   const isUsd = nativeCurrency(a) === 'USD';
   const buyPrice = a.type === 'try' ? 1 : a.buyPrice;
   const costNative = a.quantity * buyPrice;
-  const costTry = isUsd ? costNative * a.buyUsdTry : costNative;
-  const costUsd = isUsd ? costNative : costTry / a.buyUsdTry;
+  // Rate on the purchase date; today's rate until it has been looked up.
+  const buyRate = a.buyUsdTry > 0 ? a.buyUsdTry : usdTry;
+  const costTry = isUsd ? costNative * buyRate : costNative;
+  const costUsd = isUsd ? costNative : costTry / buyRate;
   const out = { asset: a, price, live, costTry, costUsd, valueTry: null, valueUsd: null, gainTry: null, gainUsd: null };
   if (price == null || !usdTry) return out;
   const valueNative = a.quantity * price;

@@ -1,15 +1,13 @@
 // Collects stock, currency and gold prices into prices.json.
-// Runs on GitHub Actions every ~15 minutes; the app reads the result
+// Runs on GitHub Actions every 5 minutes; the app reads the result
 // from raw.githubusercontent.com, which phones are allowed to fetch.
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+// Each run makes only a handful of requests: one per stock market,
+// three for currencies and one for Harem Altın gold.
+import { writeFileSync, mkdirSync } from 'node:fs';
 
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Safari/537.36';
 const FX = ['USDTRY=X', 'EURTRY=X', 'GBPTRY=X'];
 
-const symbols = [...new Set([
-  ...readFileSync('symbols.txt', 'utf8').split('\n').map((l) => l.trim().toUpperCase()).filter((l) => l && !l.startsWith('#')),
-  ...FX,
-])];
 
 const num = (v) => {
   if (typeof v === 'number') return v;
@@ -124,11 +122,8 @@ for (const [market, suffix, extra] of [
   } catch (e) { console.log(`TradingView ${market} failed:`, e.message); }
 }
 
-// Yahoo Finance for currencies and the stocks in symbols.txt (fresher prices).
-const queue = [...symbols];
-await Promise.all(Array.from({ length: 6 }, async () => {
-  while (queue.length) { const s = queue.shift(); const q = await quote(s); if (q) quotes[s] = q; }
-}));
+// Currencies from Yahoo Finance.
+for (const s of FX) { const q = await quote(s); if (q) quotes[s] = q; }
 
 // Kapalıçarşı prices from Truncgil Finans, used when Harem Altın blocks the request.
 async function truncgilGold() {

@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths: [symbols.txt, .github/scripts/fetch-prices.mjs, .github/workflows/prices.yml]
+    paths: [.github/scripts/fetch-prices.mjs, .github/workflows/prices.yml]
 
 permissions:
   contents: write
@@ -36,8 +36,8 @@ jobs:
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
           end=$(( $(date +%s) + 340 * 60 ))
           while [ "$(date +%s)" -lt "$end" ]; do
-            # Pick up edits to symbols.txt without restarting.
-            git fetch -q origin main && git checkout -q origin/main -- symbols.txt .github/scripts || true
+            # Pick up script changes without restarting.
+            git fetch -q origin main && git checkout -q origin/main -- .github/scripts || true
             if node .github/scripts/fetch-prices.mjs; then
               # Publish prices.json on its own branch, replacing the previous copy,
               # so the main branch and the website are left alone.

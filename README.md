@@ -20,9 +20,10 @@ nothing to set up.
 - **Stocks and USD/EUR/GBP**: Yahoo Finance (same exchange data investing.com shows).
 - **Gold**: Harem Altın (their live price connection), otherwise Kapalıçarşı prices from
   GenelPara or Truncgil, and as a last resort the world gold price converted to lira.
-- **Stocks followed**: the tickers in `symbols.txt`. To add one of her stocks, edit that file
-  on GitHub (Borsa İstanbul tickers end in `.IS`, e.g. `THYAO.IS`). Until then she can
-  type the price herself on the Overview.
+- **Stocks followed**: every Borsa İstanbul stock and the ~6,000 most traded US stocks and
+  ETFs (TradingView's public screener), so any stock she adds gets a price automatically.
+  Tickers in `symbols.txt` also get Yahoo Finance's fresher price. If a ticker is mistyped,
+  the app suggests the right one (e.g. NVDIA → NVDA).
 
 Holdings are valued at the dealer's buying price (Alış), i.e. what she'd get if she sold.
 

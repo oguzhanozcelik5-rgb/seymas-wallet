@@ -130,6 +130,54 @@ export async function historicalPrice(asset, date, proxyUrl) {
 }
 
 export const FEED_URL = 'https://raw.githubusercontent.com/oguzhanozcelik5-rgb/seymas-wallet/prices/prices.json';
+const NAMES_URL = 'https://raw.githubusercontent.com/oguzhanozcelik5-rgb/seymas-wallet/prices/names.json';
+
+// Ticker -> company name for every stock the feed follows (THYAO.IS, AAPL, ...).
+let namesPromise = null;
+export function loadNames() {
+  namesPromise ??= getJson(NAMES_URL).catch(() => { namesPromise = null; return null; });
+  return namesPromise;
+}
+
+function editDistance(a, b) {
+  if (Math.abs(a.length - b.length) > 2) return 9;
+  const row = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    let prev = row[0]++;
+    for (let j = 1; j <= b.length; j++) {
+      const cur = row[j];
+      row[j] = Math.min(row[j] + 1, row[j - 1] + 1, prev + (a[i - 1] === b[j - 1] ? 0 : 1));
+      prev = cur;
+    }
+  }
+  return row[b.length];
+}
+
+// For a ticker the feed doesn't know, the closest real one: by ticker
+// (THYA -> THYAO) or by company name (NVDIA -> NVDA, "NVIDIA Corp").
+// Returns { symbol, name } or null.
+export async function suggestTicker(type, typed) {
+  const names = await loadNames();
+  if (!names) return null;
+  const suffix = type === 'bist' ? '.IS' : '';
+  const t = typed.toUpperCase();
+  let best = null, bestScore = 3;
+  for (const [key, name] of Object.entries(names)) {
+    if (suffix ? !key.endsWith(suffix) : key.endsWith('.IS')) continue;
+    const ticker = suffix ? key.slice(0, -suffix.length) : key;
+    const word = String(name || '').toUpperCase().split(/[^A-Z0-9İŞĞÜÖÇ]+/)[0] || '';
+    const score = Math.min(editDistance(t, ticker), editDistance(t, word));
+    const limit = t.length <= 3 ? 1 : 2;
+    if (score <= limit && score < bestScore) { best = { symbol: ticker, name }; bestScore = score; }
+  }
+  return best;
+}
+
+export async function tickerExists(type, symbol) {
+  const names = await loadNames();
+  if (!names) return null; // unknown: feed unreachable
+  return Boolean(names[type === 'bist' ? `${symbol}.IS` : symbol]);
+}
 
 export function priceKey(a) {
   switch (a.type) {

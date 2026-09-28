@@ -41,7 +41,7 @@ jobs:
             if node .github/scripts/fetch-prices.mjs; then
               # Publish prices.json on its own branch, replacing the previous copy,
               # so the main branch and the website are left alone.
-              (cd out && rm -rf .git && git init -q -b prices && git add prices.json \
+              (cd out && rm -rf .git && git init -q -b prices && git add prices.json names.json \
                 && git commit -qm "Prices $(date -u +%FT%TZ)" && git push -qf "$PUSH_URL" prices) || echo "publish failed"
             fi
             sleep 300

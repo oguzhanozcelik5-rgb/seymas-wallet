@@ -1,4 +1,4 @@
-import { GOLD_KINDS, FX_CODES, parseNum, fetchAllPrices, fetchFrankfurter, usdTryOn, historicalPrice, priceKey } from './prices.js';
+import { GOLD_KINDS, FX_CODES, parseNum, fetchAllPrices, fetchFrankfurter, usdTryOn, historicalPrice, priceKey, suggestTicker, tickerExists } from './prices.js';
 import { load, save, exportJson, importJson, uid } from './store.js';
 import { totals, valueAsset, recordSnapshot, monthly, today, nativeCurrency } from './calc.js';
 
@@ -6,6 +6,7 @@ let state = load();
 let lastRefresh = null;
 let lastSources = [];
 let refreshing = false;
+const suggestions = {}; // asset id -> { symbol, name } for tickers with no price
 
 const $ = (s, r = document) => r.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -120,7 +121,10 @@ function holdingHtml(r) {
   const needsPrice = r.price == null;
   let priceLine;
   if (a.type === 'try') priceLine = '';
-  else if (needsPrice) priceLine = `<button class="link-btn" data-set-price="${esc(a.id)}">Enter today's price</button>`;
+  else if (needsPrice && suggestions[a.id]) {
+    const s = suggestions[a.id];
+    priceLine = `No price for ${esc(a.symbol)}. Did you mean <strong>${esc(s.symbol)}</strong> (${esc(s.name)})? <button class="link-btn" data-fix-symbol="${esc(a.id)}">Use ${esc(s.symbol)}</button>`;
+  } else if (needsPrice) priceLine = `<button class="link-btn" data-set-price="${esc(a.id)}">Enter today's price</button>`;
   else priceLine = `Now ${fmt.price(r.price, cur)}${r.live ? '' : ` <span class="tag">typed in</span> <button class="link-btn" data-set-price="${esc(a.id)}">change</button>`}`;
   return `
   <div class="card holding">
@@ -145,6 +149,16 @@ function holdingHtml(r) {
 
 $('#holdings').addEventListener('click', (e) => {
   if (handleEditDelete(e)) return;
+  const fixId = e.target.closest('[data-fix-symbol]')?.dataset.fixSymbol;
+  if (fixId) {
+    const a = state.assets.find((x) => x.id === fixId);
+    a.symbol = suggestions[fixId].symbol;
+    delete suggestions[fixId];
+    persist();
+    render();
+    refresh();
+    return;
+  }
   const id = e.target.closest('[data-set-price]')?.dataset.setPrice;
   if (!id) return;
   const a = state.assets.find((x) => x.id === id);
@@ -302,7 +316,10 @@ function formAsset() {
   };
 }
 
+let confirmedSymbol = null;
+
 function resetForm() {
+  confirmedSymbol = null;
   form.reset();
   form.id.value = '';
   form.buyDate.value = today();
@@ -321,6 +338,18 @@ form.addEventListener('submit', async (e) => {
   if (!(a.quantity > 0)) return err('Please enter how much she has.');
   if (!a.buyDate || a.buyDate > today()) return err('Please pick the date she bought it.');
   if (!(a.buyPrice > 0)) return err('Please enter the price she paid.');
+  if ((a.type === 'us' || a.type === 'bist') && a.symbol !== confirmedSymbol) {
+    const exists = await tickerExists(a.type, a.symbol);
+    if (exists === false) {
+      const s = await suggestTicker(a.type, a.symbol);
+      confirmedSymbol = a.symbol; // pressing Add again saves it as typed
+      if (s) {
+        form.symbol.value = s.symbol;
+        return err(`${a.symbol} wasn't found. Did you mean ${s.symbol} (${s.name})? We've filled it in; press Add again.`);
+      }
+      return err(`${a.symbol} wasn't found on ${a.type === 'bist' ? 'Borsa İstanbul' : 'US markets'}. Check the ticker, or press Add again to save it anyway.`);
+    }
+  }
   const i = state.assets.findIndex((x) => x.id === a.id);
   const old = state.assets[i];
   if (a.type === 'fx' && a.symbol === 'USD') a.buyUsdTry = a.buyPrice;
@@ -421,7 +450,8 @@ async function refresh() {
     const noLive = state.assets.filter((a) => (a.type === 'us' || a.type === 'bist') && !(prices[priceKey(a)] > 0));
     const msgs = [];
     if (errors.length && Object.keys(prices).length <= 1) msgs.push('Couldn\'t reach the price feeds. Showing the last saved prices.');
-    if (noLive.length) msgs.push(`No live price yet for ${noLive.map((a) => a.symbol).join(', ')}. It needs adding to the price list (symbols.txt); until then tap "Enter today's price".`);
+    for (const a of noLive) if (!suggestions[a.id]) suggestTicker(a.type, a.symbol).then((s) => { if (s) { suggestions[a.id] = s; render(); } });
+    if (noLive.length) msgs.push(`No live price for ${noLive.map((a) => a.symbol).join(', ')}. Check the ticker, or tap "Enter today's price".`);
     notice.textContent = msgs.join(' ');
     notice.hidden = !msgs.length;
   } finally {

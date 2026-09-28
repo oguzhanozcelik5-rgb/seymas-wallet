@@ -79,10 +79,55 @@ async function genelParaGold() {
   return gold;
 }
 
+// Every Borsa İstanbul stock and the most traded US stocks/ETFs, from
+// TradingView's public screener, so any stock she adds has a price.
+// Keys match the app: BIST as THYAO.IS, US as AAPL (BRK.B also as BRK-B).
+async function tradingView(market, suffix, extra) {
+  const r = await fetch(`https://scanner.tradingview.com/${market}/scan`, {
+    method: 'POST',
+    headers: { 'User-Agent': UA, 'Content-Type': 'application/json', Origin: 'https://www.tradingview.com', Referer: 'https://www.tradingview.com/' },
+    body: JSON.stringify({
+      filter: [{ left: 'type', operation: 'in_range', right: ['stock', 'dr', 'fund'] }, ...(extra.filter || [])],
+      options: { lang: 'en' },
+      markets: [market],
+      symbols: { query: { types: [] }, tickers: [] },
+      columns: ['name', 'close', 'description', 'currency'],
+      sort: extra.sort,
+      range: [0, extra.limit],
+    }),
+  });
+  if (!r.ok) throw new Error(`TradingView ${market} ${r.status}`);
+  const rows = (await r.json()).data || [];
+  const out = {};
+  for (const { d: [name, close, description, currency] } of rows) {
+    if (!(close > 0) || !name) continue;
+    const key = `${name}${suffix}`;
+    if (!out[key]) out[key] = { price: close, currency, name: description };
+    if (name.includes('.') && !out[`${name.replace(/\./g, '-')}${suffix}`]) out[`${name.replace(/\./g, '-')}${suffix}`] = out[key];
+  }
+  return out;
+}
+
 const quotes = {};
+const names = {};
+for (const [market, suffix, extra] of [
+  ['turkey', '.IS', { sort: { sortBy: 'name', sortOrder: 'asc' }, limit: 2000 }],
+  ['america', '', {
+    filter: [{ left: 'exchange', operation: 'in_range', right: ['NASDAQ', 'NYSE', 'AMEX'] }],
+    sort: { sortBy: 'Value.Traded', sortOrder: 'desc' }, limit: 6000,
+  }],
+]) {
+  try {
+    const got = await tradingView(market, suffix, extra);
+    for (const [k, v] of Object.entries(got)) { quotes[k] = { price: v.price, currency: v.currency }; names[k] = v.name; }
+    console.log(`TradingView ${market}: ${Object.keys(got).length} stocks`);
+  } catch (e) { console.log(`TradingView ${market} failed:`, e.message); }
+}
+
+// Yahoo Finance for currencies and the stocks in symbols.txt (fresher prices).
 const queue = [...symbols];
 await Promise.all(Array.from({ length: 6 }, async () => {
-  while (queue.length) { const s = queue.shift(); quotes[s] = await quote(s); }
+  while (queue.length) { const s = queue.shift(); const q = await quote(s); if (q) quotes[s] = q; }
 }));
 
 // Kapalıçarşı prices from Truncgil Finans, used when Harem Altın blocks the request.
@@ -118,10 +163,15 @@ for (const [name, fn] of [['Harem Altın', haremGold], ['GenelPara (Kapalıçar�
 const GOLD_GRAMS = { ceyrek: 1.6066, yarim: 3.2133, tam: 6.4266, cumhuriyet: 6.6098, bilezik22: 0.916 };
 if (gold?.gram) for (const [k, g] of Object.entries(GOLD_GRAMS)) if (!(gold[k] > 0)) gold[k] = gold.gram * g;
 
-const ok = Object.values(quotes).filter(Boolean).length;
-console.log(`quotes: ${ok}/${symbols.length}, gold: ${goldSource ?? 'none'}`);
-console.log('THYAO.IS', quotes['THYAO.IS'], 'USDTRY', quotes['USDTRY=X'], 'gold gram', gold?.gram);
+const ok = Object.keys(quotes).length;
+console.log(`quotes: ${ok}, gold: ${goldSource ?? 'none'}`);
+for (const k of ['THYAO.IS', 'NVDA', 'UUUU', 'SONY', 'MMM', 'REEDR.IS', 'AHGAZ.IS', 'USDTRY=X']) console.log(k, quotes[k]?.price);
 if (!ok) { console.error('No prices fetched; keeping the previous file.'); process.exit(1); }
 
+// Prices only, rounded, to keep the file small for the phone.
+const slim = {};
+for (const [k, q] of Object.entries(quotes)) slim[k] = { price: Math.round(q.price * 10000) / 10000 };
 mkdirSync('out', { recursive: true });
-writeFileSync('out/prices.json', JSON.stringify({ updated: new Date().toISOString(), quotes, gold, goldSource }));
+writeFileSync('out/prices.json', JSON.stringify({ updated: new Date().toISOString(), quotes: slim, gold, goldSource }));
+// Company names, used by the app to suggest the right ticker for a typo.
+writeFileSync('out/names.json', JSON.stringify(names));

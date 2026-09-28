@@ -2,7 +2,10 @@
 // Every price is returned in the asset's native currency:
 //   US stocks in USD; BIST stocks, gold and foreign currency in TRY.
 //
-// Two ways to get prices:
+// Where prices come from, in order:
+//  0. prices.json, refreshed about every 15 minutes by a GitHub Action in
+//     this repo (.github/workflows/prices.yml): stocks and FX from Yahoo
+//     Finance, gold from Harem Altın. Needs no setup.
 //  1. A price server URL in Settings (the small Cloudflare Worker in /worker).
 //     It reads Yahoo Finance (the same exchange feed investing.com shows) for
 //     US and BIST stocks and FX, and Harem Altın for gold.
@@ -126,6 +129,8 @@ export async function historicalPrice(asset, date, proxyUrl) {
   return j.close > 0 ? j.close : null;
 }
 
+export const FEED_URL = 'https://raw.githubusercontent.com/oguzhanozcelik5-rgb/seymas-wallet/prices/prices.json';
+
 export function priceKey(a) {
   switch (a.type) {
     case 'us': return `us:${a.symbol}`;
@@ -148,6 +153,15 @@ export async function fetchAllPrices(assets, proxyUrl) {
   const prices = {}, sources = new Set(), errors = [];
   const keys = new Set(assets.map(priceKey));
   keys.add('fx:USD'); // always needed for the dollar totals
+
+  try {
+    const j = await getJson(`${FEED_URL}?t=${Math.floor(Date.now() / 60000)}`);
+    const byYahoo = { 'USDTRY=X': 'fx:USD', 'EURTRY=X': 'fx:EUR', 'GBPTRY=X': 'fx:GBP' };
+    for (const a of assets) { const s = yahooSymbol(a); if (s) byYahoo[s] = priceKey(a); }
+    for (const [s, k] of Object.entries(byYahoo)) { const q = j.quotes?.[s]; if (q?.price > 0) prices[k] = q.price; }
+    for (const [k, v] of Object.entries(j.gold || {})) if (v > 0) prices[`gold:${k}`] = v;
+    sources.add(j.goldSource ? `Yahoo Finance, ${j.goldSource}` : 'Yahoo Finance');
+  } catch (e) { errors.push(`Price feed: ${e.message}`); }
 
   if (proxyUrl) {
     const base = proxyUrl.replace(/\/$/, '');

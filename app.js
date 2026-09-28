@@ -421,8 +421,7 @@ async function refresh() {
     const noLive = state.assets.filter((a) => (a.type === 'us' || a.type === 'bist') && !(prices[priceKey(a)] > 0));
     const msgs = [];
     if (errors.length && Object.keys(prices).length <= 1) msgs.push('Couldn\'t reach the price feeds. Showing the last saved prices.');
-    if (noLive.length && !state.settings.proxyUrl) msgs.push('Stock prices need the price server (Settings). Until then, tap "Enter today\'s price" on a stock.');
-    else if (noLive.length) msgs.push(`No live price for ${noLive.map((a) => a.symbol).join(', ')}. Check the ticker symbol.`);
+    if (noLive.length) msgs.push(`No live price yet for ${noLive.map((a) => a.symbol).join(', ')}. It needs adding to the price list (symbols.txt); until then tap "Enter today's price".`);
     notice.textContent = msgs.join(' ');
     notice.hidden = !msgs.length;
   } finally {

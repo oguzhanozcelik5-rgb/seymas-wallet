@@ -1,6 +1,6 @@
 // Keeps the app working offline. Prices are never cached here: the app
 // saves the last prices itself and shows them when the network is down.
-const CACHE = 'seymas-wallet-v3';
+const CACHE = 'seymas-wallet-v4';
 const SHELL = [
   './', './index.html', './styles.css', './app.js', './prices.js', './store.js', './calc.js',
   './manifest.webmanifest', './icons/icon.svg', './icons/icon-192.png', './icons/apple-touch-icon.png',

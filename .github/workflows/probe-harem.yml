@@ -1,0 +1,20 @@
+name: Probe Harem Altın (temporary)
+on: workflow_dispatch
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - run: |
+          UA="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Safari/537.36"
+          curl -sS -A "$UA" -o home.html -w "home %{http_code} %{size_download}\n" https://www.haremaltin.com/ || true
+          grep -oiE "(https?:)?//[a-z0-9.-]*harem[a-z0-9.-]*[^\"' <>]*|['\"]/[a-z0-9_/-]*(ajax|api|json|socket)[^\"' <>]*" home.html | sort -u | head -60
+          for s in $(grep -oE 'src="[^"]+\.js[^"]*"' home.html | sed 's/src="//;s/"$//' | head -15); do
+            case "$s" in http*) u="$s";; //*) u="https:$s";; *) u="https://www.haremaltin.com$s";; esac
+            echo "== $u"
+            curl -sS -A "$UA" "$u" | grep -oiE "(wss?|https?)://[a-z0-9.-]+[^\"' ]{0,60}|ajax/[a-z_/]+|socket[a-z_.]*\(['\"][^'\"]+|emit\(['\"][^'\"]+|on\(['\"][a-z_]+" | sort -u | head -25
+          done
+          for u in https://www.haremaltin.com/dashboard/ajax/doviz https://www.haremaltin.com/ajax/all_prices https://canlipiyasalar.haremaltin.com/ https://www.haremaltin.com/canli-piyasalar; do
+            curl -sS -A "$UA" -X POST -H "X-Requested-With: XMLHttpRequest" -d "dil_kodu=tr" -o /dev/null -w "POST $u %{http_code}\n" "$u" || true
+            curl -sS -A "$UA" -o g.out -w "GET $u %{http_code} %{size_download}\n" "$u" || true
+          done

@@ -589,6 +589,17 @@ $('#import').addEventListener('change', async (e) => {
   }
 });
 
+// ---------- no zoom ----------
+// iOS ignores user-scalable=no, so block pinch and double-tap zoom here too.
+document.addEventListener('gesturestart', (e) => e.preventDefault(), { passive: false });
+document.addEventListener('touchmove', (e) => { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
+let lastTouchEnd = 0;
+document.addEventListener('touchend', (e) => {
+  const now = Date.now();
+  if (now - lastTouchEnd < 300 && !e.target.closest('input, select, textarea')) e.preventDefault();
+  lastTouchEnd = now;
+}, { passive: false });
+
 // ---------- start ----------
 window.addEventListener('hashchange', route);
 resetForm();

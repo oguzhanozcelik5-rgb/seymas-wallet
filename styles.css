@@ -141,7 +141,9 @@ button:disabled { opacity: .5; }
 }
 .asset-list .actions { display: flex; gap: 6px; flex-shrink: 0; }
 .asset-list button { font: inherit; font-size: 13.5px; border: 1px solid var(--line); background: transparent; color: var(--text); border-radius: 10px; padding: 7px 10px; cursor: pointer; }
-.asset-list button.del { color: var(--down); }
+.asset-list button.del, .holding-actions button.del { color: var(--down); }
+.holding-actions { display: flex; gap: 8px; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); }
+.holding-actions button { font: inherit; font-size: 14px; border: 1px solid var(--line); background: transparent; color: var(--text); border-radius: 10px; padding: 8px 14px; min-height: 40px; cursor: pointer; }
 .empty { text-align: center; padding: 18px 0; }
 
 .month-list { list-style: none; padding: 0; margin: 16px 0; }

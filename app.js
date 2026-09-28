@@ -136,10 +136,15 @@ function holdingHtml(r) {
       <div><span class="k">Gain in lira</span><span class="${cls(r.gainTry)}">${signed(r.gainTry, fmt.TRY)}${pct(r.gainTry, r.costTry)}</span></div>
       <div><span class="k">Gain in dollars</span><span class="${cls(r.gainUsd)}">${signed(r.gainUsd, fmt.USD)}${pct(r.gainUsd, r.costUsd)}</span></div>
     </div>
+    <div class="holding-actions">
+      <button data-edit="${esc(a.id)}">Edit</button>
+      <button class="del" data-del="${esc(a.id)}">Delete</button>
+    </div>
   </div>`;
 }
 
 $('#holdings').addEventListener('click', (e) => {
+  if (handleEditDelete(e)) return;
   const id = e.target.closest('[data-set-price]')?.dataset.setPrice;
   if (!id) return;
   const a = state.assets.find((x) => x.id === id);
@@ -374,19 +379,28 @@ function renderAssetList() {
   }
 }
 
-$('#asset-list').addEventListener('click', (e) => {
+// Edit and Delete buttons, on both the Overview cards and the Add tab list.
+function handleEditDelete(e) {
   const edit = e.target.closest('[data-edit]')?.dataset.edit;
   const del = e.target.closest('[data-del]')?.dataset.del;
-  if (edit) editAsset(state.assets.find((a) => a.id === edit));
+  if (edit) {
+    if (location.hash !== '#add') { location.hash = '#add'; route(); }
+    editAsset(state.assets.find((a) => a.id === edit));
+    return true;
+  }
   if (del) {
     const a = state.assets.find((x) => x.id === del);
-    if (!confirm(`Delete ${assetName(a)} (${qtyText(a)})?`)) return;
+    if (!confirm(`Delete ${assetName(a)} (${qtyText(a)})?`)) return true;
     state.assets = state.assets.filter((x) => x.id !== del);
     if (form.id.value === del) resetForm();
     persist();
     render();
+    toast(`${assetName(a)} deleted.`);
+    return true;
   }
-});
+  return false;
+}
+$('#asset-list').addEventListener('click', handleEditDelete);
 
 // ---------- prices ----------
 async function refresh() {

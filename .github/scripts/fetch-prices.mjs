@@ -32,23 +32,48 @@ async function quote(symbol) {
   return null;
 }
 
-async function haremGold() {
-  const r = await fetch('https://www.haremaltin.com/dashboard/ajax/doviz', {
-    method: 'POST',
-    headers: {
-      'User-Agent': UA, 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-      'X-Requested-With': 'XMLHttpRequest', Referer: 'https://www.haremaltin.com/', Origin: 'https://www.haremaltin.com',
-    },
-    body: 'dil_kodu=tr',
-  });
-  if (!r.ok) throw new Error(`Harem ${r.status}`);
-  const d = (await r.json()).data || {};
+// Harem Altın's price data (the feed behind their live price page).
+const haremPick = (d) => {
   const pick = (...keys) => { for (const k of keys) { const v = num(d[k]?.alis); if (v > 0) return v; } return undefined; };
-  const gold = {
+  return {
     gram: pick('KULCEALTIN', 'ALTIN'), ceyrek: pick('CEYREK_YENI', 'CEYREK_ESKI'), yarim: pick('YARIM_YENI', 'YARIM_ESKI'),
     tam: pick('TEK_YENI', 'TEK_ESKI'), cumhuriyet: pick('ATA_YENI', 'ATA_ESKI'), bilezik22: pick('AYAR22'),
   };
-  if (!gold.gram) throw new Error('no gold prices');
+};
+async function haremGold() {
+  const attempts = [
+    () => fetch('https://canlipiyasalar.haremaltin.com/tmp/altin.json?dil_kodu=tr', { headers: { 'User-Agent': UA, Referer: 'https://canlipiyasalar.haremaltin.com/' } }),
+    () => fetch('https://www.haremaltin.com/dashboard/ajax/altin', {
+      method: 'POST',
+      headers: {
+        'User-Agent': UA, 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+        'X-Requested-With': 'XMLHttpRequest', Referer: 'https://www.haremaltin.com/', Origin: 'https://www.haremaltin.com',
+      },
+      body: 'dil_kodu=tr',
+    }),
+  ];
+  let last;
+  for (const go of attempts) {
+    try {
+      const r = await go();
+      if (!r.ok) { last = new Error(`Harem ${r.status}`); continue; }
+      const j = await r.json();
+      const gold = haremPick(j.data || j);
+      if (gold.gram) return gold;
+      last = new Error(`Harem: unexpected keys ${Object.keys(j.data || j).slice(0, 15).join(',')}`);
+    } catch (e) { last = e; }
+  }
+  throw last;
+}
+
+// GenelPara's public gold feed (Kapalıçarşı prices).
+async function genelParaGold() {
+  const r = await fetch('https://api.genelpara.com/embed/altin.json', { headers: { 'User-Agent': UA } });
+  if (!r.ok) throw new Error(`GenelPara ${r.status}`);
+  const d = await r.json();
+  const pick = (...keys) => { for (const k of keys) { const v = num(d[k]?.alis); if (v > 0) return v; } return undefined; };
+  const gold = { gram: pick('GA'), ceyrek: pick('C'), yarim: pick('Y'), tam: pick('T'), cumhuriyet: pick('CMR', 'ATA'), bilezik22: pick('YIA', '22') };
+  if (!gold.gram) throw new Error(`GenelPara: unexpected keys ${Object.keys(d).slice(0, 15).join(',')}`);
   return gold;
 }
 
@@ -84,9 +109,12 @@ async function worldGold() {
 }
 
 let gold = null, goldSource = null;
-for (const [name, fn] of [['Harem Altın', haremGold], ['Truncgil Finans (Kapalıçarşı)', truncgilGold], ['World gold price', worldGold]]) {
+for (const [name, fn] of [['Harem Altın', haremGold], ['GenelPara (Kapalıçarşı)', genelParaGold], ['Truncgil Finans (Kapalıçarşı)', truncgilGold], ['World gold price', worldGold]]) {
   try { gold = await fn(); goldSource = name; break; } catch (e) { console.log(`${name} failed:`, e.message); }
 }
+// Coins a source didn't list are estimated from their gold content (22 ayar).
+const GOLD_GRAMS = { ceyrek: 1.6066, yarim: 3.2133, tam: 6.4266, cumhuriyet: 6.6098, bilezik22: 0.916 };
+if (gold?.gram) for (const [k, g] of Object.entries(GOLD_GRAMS)) if (!(gold[k] > 0)) gold[k] = gold.gram * g;
 
 const ok = Object.values(quotes).filter(Boolean).length;
 console.log(`quotes: ${ok}/${symbols.length}, gold: ${goldSource ?? 'none'}`);

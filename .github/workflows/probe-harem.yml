@@ -5,31 +5,34 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
-      - run: |
-          UA="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Safari/537.36"
-          curl -sS -A "$UA" https://canlipiyasalar.haremaltin.com/ | grep -oiE "(wss?|https?)?://[a-z0-9.-]*harem[^\"' <>]*|ajax/[a-z_/]+|tmp/[a-z_./]+|socket[a-z_.]*\(['\"][^'\"]+|on\(['\"][a-z_]+|io\([^)]{0,80}\)" | sort -u | head -40
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
       - run: |
           cat > probe.mjs <<'JS'
           const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Safari/537.36';
-          const H = { 'User-Agent': UA, Origin: 'https://www.haremaltin.com', Referer: 'https://www.haremaltin.com/' };
-          for (const eio of [4, 3]) {
-            const base = `https://hrmsocketonly.haremaltin.com/socket.io/?EIO=${eio}&transport=polling`;
-            try {
-              let r = await fetch(`${base}&t=${Date.now()}`, { headers: H });
-              let t = await r.text();
-              console.log(`EIO=${eio} open`, r.status, t.slice(0, 200));
-              const sid = t.match(/"sid":"([^"]+)"/)?.[1];
-              if (!sid) continue;
-              r = await fetch(`${base}&sid=${sid}&t=${Date.now()}`, { method: 'POST', headers: { ...H, 'Content-Type': 'text/plain;charset=UTF-8' }, body: eio === 4 ? '40' : '2:40' });
-              console.log('connect', r.status, (await r.text()).slice(0, 100));
-              for (let i = 0; i < 4; i++) {
-                r = await fetch(`${base}&sid=${sid}&t=${Date.now()}`, { headers: H });
-                t = await r.text();
-                console.log(`poll ${i}`, r.status, t.length, t.slice(0, 1500));
-                if (t.includes('price_changed')) break;
-              }
-              break;
-            } catch (e) { console.log(`EIO=${eio} error`, e.message); }
+          function tryEio(eio, withHeaders) {
+            return new Promise((resolve) => {
+              const url = `wss://hrmsocketonly.haremaltin.com/socket.io/?EIO=${eio}&transport=websocket`;
+              let ws;
+              try {
+                ws = withHeaders ? new WebSocket(url, { headers: { 'User-Agent': UA, Origin: 'https://www.haremaltin.com' } }) : new WebSocket(url);
+              } catch (e) { console.log('ctor error', e.message); return resolve(false); }
+              const done = (v) => { try { ws.close(); } catch {} resolve(v); };
+              const timer = setTimeout(() => { console.log(`EIO=${eio} headers=${withHeaders}: timeout`); done(false); }, 25000);
+              ws.onopen = () => console.log(`EIO=${eio} headers=${withHeaders}: open`);
+              ws.onerror = (e) => { console.log(`EIO=${eio}: error`, e.message || e.type); clearTimeout(timer); done(false); };
+              ws.onclose = (e) => console.log(`EIO=${eio}: close`, e.code, e.reason);
+              ws.onmessage = (m) => {
+                const t = String(m.data);
+                if (t[0] === '0') { console.log('handshake', t.slice(0, 200)); ws.send('40'); return; }
+                if (t === '2') { ws.send('3'); return; }
+                console.log('msg', t.length, t.slice(0, 2500));
+                if (t.startsWith('42')) { clearTimeout(timer); done(true); }
+              };
+            });
           }
+          for (const [eio, h] of [[4, true], [4, false], [3, true]]) { if (await tryEio(eio, h)) break; }
+          process.exit(0);
           JS
           node probe.mjs

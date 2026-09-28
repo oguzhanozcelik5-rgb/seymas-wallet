@@ -97,3 +97,56 @@ export function monthly(state) {
   }
   return out.reverse();
 }
+
+// Pure gold in each kind, in grams of 24 ayar (a çeyrek is 1.75 g of 22 ayar).
+export const GOLD_24K_GRAMS = { gram: 1, ceyrek: 1.6066, yarim: 3.2133, tam: 6.4266, cumhuriyet: 6.6098, bilezik22: 0.916 };
+
+function sumRows(rows) {
+  const t = { costTry: 0, costUsd: 0, valueTry: 0, valueUsd: 0, unpriced: 0 };
+  for (const r of rows) {
+    t.costTry += r.costTry; t.costUsd += r.costUsd;
+    if (r.valueTry == null) { t.unpriced++; continue; }
+    t.valueTry += r.valueTry; t.valueUsd += r.valueUsd;
+  }
+  // Gains only make sense when every holding in the group has a price.
+  t.gainTry = t.unpriced ? null : t.valueTry - t.costTry;
+  t.gainUsd = t.unpriced ? null : t.valueUsd - t.costUsd;
+  if (t.unpriced) { t.valueTry = null; t.valueUsd = null; }
+  return t;
+}
+
+// Cumulative totals: all gold together, each currency, each stock.
+export function summary(state) {
+  const { rows } = totals(state);
+  const out = { gold: null, currencies: [], stocks: [], lira: null };
+
+  const gold = rows.filter((r) => r.asset.type === 'gold');
+  if (gold.length) {
+    const kinds = {};
+    let grams = 0;
+    for (const r of gold) {
+      const k = r.asset.symbol;
+      kinds[k] = (kinds[k] || 0) + r.asset.quantity;
+      grams += r.asset.quantity * (GOLD_24K_GRAMS[k] ?? 1);
+    }
+    const t = sumRows(gold);
+    out.gold = { ...t, grams, kinds, avgCostPerGram: t.costTry / grams, valuePerGram: t.valueTry == null ? null : t.valueTry / grams };
+  }
+
+  const group = (type) => {
+    const by = {};
+    for (const r of rows.filter((x) => x.asset.type === type)) (by[r.asset.symbol] ||= []).push(r);
+    return Object.entries(by).map(([symbol, rs]) => {
+      const t = sumRows(rs);
+      const quantity = rs.reduce((s, r) => s + r.asset.quantity, 0);
+      const costNative = rs.reduce((s, r) => s + r.asset.quantity * r.asset.buyPrice, 0);
+      return { ...t, symbol, type, quantity, avgCost: costNative / quantity, price: rs[0].price, count: rs.length };
+    }).sort((a, b) => (b.valueTry ?? b.costTry) - (a.valueTry ?? a.costTry));
+  };
+  out.currencies = group('fx');
+  out.stocks = [...group('bist'), ...group('us')];
+
+  const lira = rows.filter((r) => r.asset.type === 'try');
+  if (lira.length) out.lira = { ...sumRows(lira), quantity: lira.reduce((s, r) => s + r.asset.quantity, 0) };
+  return out;
+}

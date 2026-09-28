@@ -1,6 +1,6 @@
 import { GOLD_KINDS, FX_CODES, parseNum, fetchAllPrices, fetchFrankfurter, usdTryOn, historicalPrice, priceKey, suggestTicker, tickerExists } from './prices.js';
 import { load, save, exportJson, importJson, uid } from './store.js';
-import { totals, valueAsset, recordSnapshot, monthly, today, nativeCurrency } from './calc.js';
+import { totals, valueAsset, recordSnapshot, monthly, today, nativeCurrency, summary } from './calc.js';
 
 let state = load();
 let lastRefresh = null;
@@ -52,7 +52,7 @@ function persist() {
 }
 
 // ---------- routing ----------
-const VIEWS = ['add', 'overview', 'monthly'];
+const VIEWS = ['add', 'overview', 'summary', 'monthly'];
 function route() {
   let v = location.hash.slice(1);
   if (!VIEWS.includes(v)) v = state.assets.length ? 'overview' : 'add';
@@ -65,6 +65,7 @@ function route() {
 function render() {
   renderOverview();
   renderAssetList();
+  renderSummary();
   renderMonthly();
 }
 
@@ -172,6 +173,71 @@ $('#holdings').addEventListener('click', (e) => {
   persist();
   render();
 });
+
+// ---------- summary ----------
+const cell = (label, main, sub = '', cls_ = '') =>
+  `<div><span class="k">${esc(label)}</span><span class="${cls_}">${main}</span>${sub ? `<small class="${cls_}">${sub}</small>` : ''}</div>`;
+
+function gainCells(g) {
+  return cell('Total gain', signed(g.gainTry, fmt.TRY) + pct(g.gainTry, g.costTry), '', cls(g.gainTry))
+    + cell('Gain in dollars', signed(g.gainUsd, fmt.USD) + pct(g.gainUsd, g.costUsd), '', cls(g.gainUsd));
+}
+
+function summaryCard(title, sub, g, rows, extra = '') {
+  return `
+  <div class="card holding">
+    <div class="holding-top">
+      <div><div class="holding-name">${title}</div><div class="summary-sub">${sub}</div></div>
+      <div class="holding-value">${fmt.TRY(g.valueTry)}<div class="holding-meta">${fmt.USD(g.valueUsd)}</div></div>
+    </div>
+    ${extra}
+    <div class="summary-grid">
+      ${cell('Total invested', fmt.TRY(g.costTry), fmt.USD(g.costUsd))}
+      ${cell('Value now', fmt.TRY(g.valueTry), fmt.USD(g.valueUsd))}
+      ${gainCells(g)}
+      ${rows}
+    </div>
+  </div>`;
+}
+
+function renderSummary() {
+  const s = summary(state);
+  const box = $('#summary');
+  const parts = [];
+  const bought = (n) => `${n} ${n === 1 ? 'purchase' : 'purchases'}`;
+  if (s.gold) {
+    const g = s.gold;
+    const chips = Object.entries(g.kinds).map(([k, q]) => {
+      const unit = GOLD_KINDS[k]?.unit === 'gram' ? ' g' : '';
+      return `<span>${fmt.num(q, 2)}${unit} ${esc(GOLD_KINDS[k]?.label ?? k)}</span>`;
+    }).join('');
+    parts.push('<div class="group-title">Gold</div>' + summaryCard(
+      `${fmt.num(g.grams, 2)} g gold`, 'Total in 24 ayar grams', g,
+      cell('Average cost', `${fmt.TRY(g.avgCostPerGram)} / g`) + cell('Price now', g.valuePerGram == null ? '—' : `${fmt.TRY(g.valuePerGram)} / g`),
+      `<div class="kind-chips">${chips}</div>`));
+  }
+  if (s.currencies.length) {
+    parts.push('<div class="group-title">Foreign currency</div>' + s.currencies.map((c) => summaryCard(
+      `${fmt.num(c.quantity, 2)} ${esc(c.symbol)}`, `${esc(FX_CODES[c.symbol] ?? c.symbol)} · ${bought(c.count)}`, c,
+      cell('Average cost', fmt.price(c.avgCost, 'TRY')) + cell('Rate now', fmt.price(c.price, 'TRY')),
+    )).join(''));
+  }
+  if (s.lira) {
+    const l = s.lira;
+    parts.push('<div class="group-title">Turkish lira</div>' + summaryCard(`₺${nf(2).format(l.quantity)}`, 'Kept in lira', l, ''));
+  }
+  if (s.stocks.length) {
+    parts.push('<div class="group-title">Stocks</div>' + s.stocks.map((st) => {
+      const cur = st.type === 'us' ? 'USD' : 'TRY';
+      return summaryCard(
+        esc(st.symbol), `${fmt.num(st.quantity)} ${st.quantity === 1 ? 'share' : 'shares'} · ${st.type === 'us' ? 'US' : 'Borsa İstanbul'} · ${bought(st.count)}`, st,
+        cell('Average cost', `${fmt.price(st.avgCost, cur)} / share`) + cell('Price now', st.price == null ? '—' : `${fmt.price(st.price, cur)} / share`),
+      );
+    }).join(''));
+  }
+  box.innerHTML = parts.join('');
+  $('#summary-empty').hidden = state.assets.length > 0;
+}
 
 // ---------- monthly ----------
 function renderMonthly() {

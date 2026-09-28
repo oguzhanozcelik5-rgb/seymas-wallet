@@ -69,7 +69,8 @@ const num = (v) => {
   return parseFloat(s);
 };
 
-// Harem Altın's price data (the feed behind their live price page).
+// Harem Altın's live prices come over a socket.io connection (the same one
+// their website uses). Connect, wait for the first "price_changed" message.
 const haremPick = (d) => {
   const pick = (...keys) => { for (const k of keys) { const v = num(d[k]?.alis); if (v > 0) return v; } return undefined; };
   return {
@@ -78,29 +79,33 @@ const haremPick = (d) => {
   };
 };
 async function haremGold() {
-  const attempts = [
-    () => fetch('https://canlipiyasalar.haremaltin.com/tmp/altin.json?dil_kodu=tr', { headers: { 'User-Agent': UA, Referer: 'https://canlipiyasalar.haremaltin.com/' } }),
-    () => fetch('https://www.haremaltin.com/dashboard/ajax/altin', {
-      method: 'POST',
-      headers: {
-        'User-Agent': UA, 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-        'X-Requested-With': 'XMLHttpRequest', Referer: 'https://www.haremaltin.com/', Origin: 'https://www.haremaltin.com',
-      },
-      body: 'dil_kodu=tr',
-    }),
-  ];
-  let last;
-  for (const go of attempts) {
-    try {
-      const r = await go();
-      if (!r.ok) { last = new Error(`Harem ${r.status}`); continue; }
-      const j = await r.json();
-      const gold = haremPick(j.data || j);
-      if (gold.gram) return gold;
-      last = new Error(`Harem: unexpected keys ${Object.keys(j.data || j).slice(0, 15).join(',')}`);
-    } catch (e) { last = e; }
-  }
-  throw last;
+  const resp = await fetch('https://hrmsocketonly.haremaltin.com/socket.io/?EIO=4&transport=websocket', {
+    headers: { Upgrade: 'websocket', 'User-Agent': UA, Origin: 'https://www.haremaltin.com' },
+  });
+  const ws = resp.webSocket;
+  if (!ws) throw new Error(`Harem ${resp.status}`);
+  ws.accept();
+  return new Promise((resolve, reject) => {
+    const data = {};
+    const finish = (err) => {
+      clearTimeout(timer);
+      try { ws.close(); } catch { /* already closed */ }
+      const gold = haremPick(data);
+      if (gold.gram) resolve(gold); else reject(err || new Error('Harem sent no gold prices'));
+    };
+    const timer = setTimeout(() => finish(new Error('Harem timed out')), 10000);
+    ws.addEventListener('error', () => finish(new Error('Harem connection failed')));
+    ws.addEventListener('message', (m) => {
+      const t = String(m.data);
+      if (t[0] === '0') ws.send('40');
+      else if (t === '2') ws.send('3');
+      else if (t.startsWith('42')) {
+        const [event, payload] = JSON.parse(t.slice(2));
+        if (event === 'price_changed') Object.assign(data, payload?.data);
+        if (haremPick(data).gram) finish();
+      }
+    });
+  });
 }
 
 // GenelPara's public gold feed (Kapalıçarşı prices).

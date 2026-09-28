@@ -17,8 +17,8 @@ A GitHub Action in this repo (`.github/workflows/prices.yml`) runs about every 1
 and saves `prices.json` on the `prices` branch. The app reads it; nothing to set up.
 
 - **Stocks and USD/EUR/GBP**: Yahoo Finance (same exchange data investing.com shows).
-- **Gold**: Harem Altın when reachable, otherwise Kapalıçarşı prices from GenelPara or
-  Truncgil, and as a last resort the world gold price converted to lira.
+- **Gold**: Harem Altın (their live price connection), otherwise Kapalıçarşı prices from
+  GenelPara or Truncgil, and as a last resort the world gold price converted to lira.
 - **Stocks followed**: the tickers in `symbols.txt`. To add one of her stocks, edit that file
   on GitHub (Borsa İstanbul tickers end in `.IS`, e.g. `THYAO.IS`). Until then she can
   type the price herself on the Overview.

@@ -175,8 +175,9 @@ export async function fetchAllPrices(assets, proxyUrl) {
     } catch (e) { errors.push(`Price server (stocks): ${e.message}`); }
     try {
       const j = await getJson(`${base}/gold`);
-      // The feed's Kapalıçarşı gold wins; the server only fills gaps.
-      for (const [k, v] of Object.entries(j.gold || {})) if (v > 0 && !(prices[`gold:${k}`] > 0)) prices[`gold:${k}`] = v;
+      // Live Harem Altın prices from the server win; its backup sources only fill gaps.
+      const live = j.source === 'Harem Altın';
+      for (const [k, v] of Object.entries(j.gold || {})) if (v > 0 && (live || !(prices[`gold:${k}`] > 0))) prices[`gold:${k}`] = v;
       if (j.source) sources.add(j.source);
     } catch (e) { errors.push(`Price server (gold): ${e.message}`); }
   }
